@@ -1,0 +1,5 @@
+pdfplumber
+pandas
+scipy
+matplotlib
+pytest
