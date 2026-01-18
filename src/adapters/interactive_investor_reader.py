@@ -31,6 +31,10 @@ class InteractiveInvestorReader(StatementReader):
                     latest_value = account_value
 
             new_transactions = self._extract_transactions(text_content)
+            # Add fees as negative transactions
+            fee_transactions = self._extract_regular_fees(text_content)
+            new_transactions.extend(fee_transactions)
+            
             for tx in new_transactions:
                 # Deduplicate based on date and amount (rounded to 2 decimal places)
                 tx_key = (tx.date, round(tx.amount, 2))
@@ -39,6 +43,31 @@ class InteractiveInvestorReader(StatementReader):
                     seen_txs.add(tx_key)
 
         return Portfolio("Interactive Investor", all_transactions, latest_value, latest_date)
+
+    def _extract_regular_fees(self, text: str) -> List[Transaction]:
+        """
+        Extracts 'Regular Fees' from the statement.
+        Example: '10 Jun 2025 Total Monthly Fee £ 4.99 ...'
+        These are typically paid externally (e.g. via direct debit) and thus should be treated
+        as negative cash flows (investments/costs paid into the account).
+        """
+        fees = []
+        # Regex: Date + "Total Monthly Fee" + Amount
+        # 10 Jun 2025 Total Monthly Fee £ 4.99
+        pattern = re.compile(r"(\d{1,2} [A-Za-z]{3} \d{4})\s+Total Monthly Fee\s+£\s*([\d,]+\.\d{2})")
+        
+        for match in pattern.finditer(text):
+            date_str, amount_str = match.groups()
+            try:
+                tx_date = datetime.strptime(date_str, "%d %b %Y").date()
+                amount = float(amount_str.replace(",", ""))
+                
+                # Treat fee as negative (money spent/invested)
+                fees.append(Transaction(tx_date, -amount, "Total Monthly Fee"))
+            except ValueError:
+                pass
+                
+        return fees
 
     def _get_date_from_filename(self, filename: str, fallback_date: date) -> date:
         """Parses the date from the filename, e.g., 'Statement 2025-09-30.pdf'."""
